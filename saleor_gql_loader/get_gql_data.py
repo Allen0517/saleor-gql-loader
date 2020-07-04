@@ -1,6 +1,10 @@
 import xlrd
 import os
 import time
+import string
+import random
+import json
+from io import StringIO
 from xlrd import open_workbook, cellname
 from saleor_gql_loader import ETLDataLoader
 from saleor_gql_loader.utils import graphql_request, graphql_multipart_request, override_dict, handle_errors, get_payload
@@ -212,7 +216,7 @@ class ETLDataGetter(ETLDataLoader):
 		updated_product = {
 			"category": product["category"],
 			"chargeTaxes": product["chargeTaxes"],
-			# "descriptionJson": product["descriptionJson"],
+			"descriptionJson": product["descriptionJson"],
 			"isPublished": product["isPublished"],
 			"name": product["name"],
 			"basePrice": product["basePrice"],
@@ -295,7 +299,7 @@ class ETLDataGetter(ETLDataLoader):
 				continue
 
 			if sheet.cell_value(row, DESCRIPTION_COL):
-				product_description = sheet.cell_value(row, DESCRIPTION_COL)
+				product_description = self.get_description(sheet.cell_value(row, DESCRIPTION_COL))
 			else:
 				product_description = "This product has no description."
 
@@ -350,7 +354,7 @@ class ETLDataGetter(ETLDataLoader):
 			product_obj = {
 				'name': product["product_name"],
 				'sku': product["product_sku"],
-				# 'descriptionJson': product["product_description"],
+				'descriptionJson': product["product_description"],
 				'chargeTaxes': True,
 				'isPublished': True,
 				'trackInventory': False,
@@ -758,10 +762,63 @@ class ETLDataGetter(ETLDataLoader):
 
 		return response["data"]["products"]["edges"]
 
-# etl_data_getter = ETLDataGetter(ETL_SECRET_ID)
+	def get_description(self, input_html):
+		test_string = input_html
+
+		replace_dictionary = {
+			"<li>": "",
+			"</li>": "",
+			"<b>": "",
+			"</b>": "",
+			"<h2>": "",
+			"</h2>": "",
+			"<div>": "",
+			"</div>": "",
+			"<li>": "",
+			"</li>": "",
+			"<ul>": "",
+			"</ul>": "",
+			"<input type=\"button\" class=\"btn btn-primary\" onclick=\"location.href=\'http://sandiegoengineparts.com/p/submit-your-price\';\" value=\"Submit Your Bid\">": "",
+			"<h2 style=\"font-size: 32px;\">Don't Like the Price?": "",
+		}
+		new_set = self.replace_all_helper(test_string, replace_dictionary)
+		final_list = []
+		for line in new_set.split("\n"):
+			if not line.strip():
+				continue
+			line = line.strip()
+			final_list.append(line)
+
+		return self.get_description_string(final_list)
+
+	def replace_all_helper(self, text, dic):
+		for i, j in dic.items():
+			text = text.replace(i, j)
+		return text
+
+	def get_description_string(self, lines_list):
+		final_string = {
+			"blocks": [],
+			"entityMap": {}
+		}
+		for line in lines_list:
+			temp_dict = {
+				"key": ''.join(random.SystemRandom().choice(string.ascii_lowercase + string.digits) for _ in range(6)),
+				"data": {},
+				"text": f"{line}",
+				"type": "unstyled",
+				"depth": 0,
+				"entityRanges":[],
+				"inlineStyleRanges":[]
+			}
+			final_string["blocks"].append(temp_dict)
+		return json.dumps(final_string, indent=4)
 
 
-# etl_data_getter.product_excel_import_all()
+etl_data_getter = ETLDataGetter(ETL_SECRET_ID)
+etl_data_getter.product_excel_import_all()
+
+# print(etl_data_getter.get_description(None))
 
 # ! To purge all products
 # for x in range(100):
